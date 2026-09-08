@@ -1,5 +1,7 @@
 # NieR Replicant — concurrent keyboard/mouse + controller
 
+> ✻ Baked for 22m 34s
+
 Small ASI plugin that stops *NieR Replicant ver.1.22474487139* from disabling the mouse while a
 controller is in use, so the mouse can drive the camera at the same time as the pad.
 
