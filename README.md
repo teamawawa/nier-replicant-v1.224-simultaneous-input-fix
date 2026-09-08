@@ -1,4 +1,4 @@
-# NieR Replicant — concurrent keyboard/mouse + controller
+# NieR Replicant ver.1.22474487139 — simultaneous mouse + controller
 
 > ✻ Baked for 22m 34s
 
