@@ -1,7 +1,7 @@
 # Cross-build the ASI plugin with mingw-w64.
 CXX      := x86_64-w64-mingw32-g++
 CXXFLAGS := -std=c++17 -O2 -municode -Wall -Wextra -Wno-cast-function-type
-LDFLAGS  := -shared -static -static-libgcc -static-libstdc++ \
+LDFLAGS  := -shared -s -static -static-libgcc -static-libstdc++ \
             -Wl,--enable-stdcall-fixup -Wl,--kill-at
 
 TARGET  := build/NierConcurrentInput.asi
