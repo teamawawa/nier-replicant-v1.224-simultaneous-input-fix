@@ -17,12 +17,12 @@ So the moment you hold the left stick to run, the mouse is dead.
 The plugin NOPs the two branches that AND that flag into the game's `MouseUsable()` predicate
 (4 bytes total). After that:
 
-* the **camera** picks mouse-vs-right-stick per frame, using the game's own rule: mouse if the mouse
+* the camera picks mouse-vs-right-stick per frame, using the game's own rule: mouse if the mouse
   moved this frame, right stick otherwise;
-* **everything else on the pad** — left stick, buttons, triggers — keeps working in the same frame,
+* everything else on the pad — left stick, buttons, triggers — keeps working in the same frame,
   untouched;
-* controller **button prompts still switch correctly**: the active-device flag itself is not
-  modified, only the mouse gate that read it;
+* controller button prompts still switch correctly: the active-device flag itself is not modified,
+  only the mouse gate that read it;
 * mouse capture and cursor recentring stay in their normal "mouse is active" state, so touchpad-driven
   look does not die at the screen edge.
 
@@ -32,7 +32,7 @@ Full reverse-engineering write-up, including addresses and the byte-level reason
 ## Install
 
 Requires an ASI loader in the game folder. If you already use
-[NierReplicantFix](https://codeberg.org/Lyall/NierReplicantFix), its `winmm.dll` is one — the two
+[NierReplicantFix](https://codeberg.org/Lyall/NierReplicantFix), its `winmm.dll` is one. The two
 plugins patch different bytes and coexist in any load order.
 
 ```sh
@@ -96,5 +96,5 @@ docs/FINDINGS.md    reverse-engineering notes
 game/               local copies of the game files (gitignored, not redistributable)
 ```
 
-Analysis was done entirely against copies in `game/`; the Steam installation itself is only ever
-added to, never modified.
+Analysis was done entirely against copies in `game/`. Installing adds files to the Steam directory;
+nothing already there is ever modified.

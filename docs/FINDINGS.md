@@ -1,8 +1,8 @@
-# NieR Replicant ver.1.22474487139 — input device switching, reverse-engineering notes
+# NieR Replicant ver.1.22474487139 input device switching — reverse-engineering notes
 
 Target: `NieR Replicant ver.1.22474487139.exe`, Steam build
 (MD5 `89e4c3d0af6c86db2312fb911dafec91`, 23,723,240 bytes, PE32+, image base `0x140000000`).
-No Denuvo / packer — plain MSVC binary with intact `.pdata` (46,634 functions) and MSVC RTTI.
+No Denuvo or packer; a plain MSVC binary with intact `.pdata` (46,634 functions) and MSVC RTTI.
 
 All addresses below are **virtual addresses at the default image base `0x140000000`**.
 Subtract `0x140000000` to get an RVA.
@@ -41,16 +41,16 @@ and raw Win32 cursor handling (`GetCursorPos`, `SetCursorPos`, `ShowCursor`, `Cl
 | `+0x90` | `0x14443E490` | "force re-apply cursor mode" flag |
 | `+0xA8` | `0x14443E4A8` | embedded `cgl::input::Pad` (per-pad records of `0x214` bytes at `+0x6C`) |
 
-`0x14443E48C` is read from **35+ call sites all over the game** — it is what drives button-prompt
-glyphs (KB vs. controller icons), UI behaviour, etc. Anything that changes it changes the glyphs,
-so the fix below deliberately leaves it alone.
+`0x14443E48C` is read from 35+ call sites across the game, and drives button-prompt glyphs
+(KB vs. controller icons), UI behaviour, etc. Anything that changes it changes the glyphs, so the
+fix below leaves it alone.
 
 Related globals: `0x14443E394` (mouse button state block), `0x14443E3B0` (keyboard state block),
 `0x14443E3C4` (mouse wheel, float).
 
 ## 3. `UpdateActiveDevice` — `0x1403D3410`
 
-Runs every frame and is the thing that "disables the mouse when a controller is detected":
+Runs every frame, and is what "disables the mouse when a controller is detected":
 
 ```c
 void UpdateActiveDevice(ctx) {
@@ -74,7 +74,7 @@ void UpdateActiveDevice(ctx) {
 
 Two things follow:
 
-1. **While any pad button is held or a stick is off-centre, the function returns early**, so
+1. While any pad button is held or a stick is off-centre, the function returns early, so
    `0x8C` stays `1` for as long as you are, say, holding the left stick to run. Moving the mouse in
    that frame is simply never looked at.
 2. Once `0x8C` is 1, `MouseUsable()` returns false, so `0x8F` becomes 0, and then mouse *movement*
@@ -117,7 +117,7 @@ the cached `ctx->0x8F` and, on change, pushes three booleans into `MouseRawDevic
 | `+0x49` | `usable` | `ClipCursor()` — cursor confined to the window |
 | `+0x4A` | `usable` | recentre the cursor with `SetCursorPos` each frame and derive deltas from it |
 
-So when the pad takes over, the game also **turns off mouse-look recentring**, which is why even
+So when the pad takes over, the game also turns off mouse-look recentring, which is why even
 "partial" fixes that only unblock the camera feel bad: the cursor drifts to a screen edge and the
 deltas die. Patching `MouseUsable()` itself keeps capture/recentring alive.
 
@@ -138,12 +138,12 @@ The camera update `0x14064E320` calls it once and then takes **one** of two bran
 `false` → right-stick path (`FUN_140652580`), `true` → mouse path (`MouseDeltaX/Y` at
 `0x1403D2E40` / `0x1403D2E70`, negated and scaled).
 
-This is exactly the "mouse XOR right stick, decided per frame" behaviour that is acceptable here —
-and it is *already* the game's own design. Nothing else in the camera path consults `0x8C`.
+This is the "mouse XOR right stick, decided per frame" behaviour we want, and it is already the
+game's own design. Nothing else in the camera path consults `0x8C`.
 
-Also important: the mouse delta getters `0x1403D2E40` / `0x1403D2E70` only check that a mouse is
-connected (`hidInput->+0x2F`). They do **not** consult the active-device flag, so raw deltas keep
-flowing while a pad is in use.
+The mouse delta getters `0x1403D2E40` / `0x1403D2E70` only check that a mouse is connected
+(`hidInput->+0x2F`). They do **not** consult the active-device flag, so raw deltas keep flowing
+while a pad is in use.
 
 ## 6. The fix
 
@@ -195,7 +195,7 @@ Analogous switches exist for the axis and button readers, keyed on the same `0x8
   `movaps xmm6, xmm0` → `addss xmm6, xmm0` (3 bytes → 4, so it needs a code cave).
 * `0x1403D3840` — the same shape for the other axis component.
 * `0x1403D3B00` — already *adds* the keyboard contribution (`fVar3 + fVar2`), gated on `0x8C == 0`;
-  here removing the gate is a 2-byte NOP and is genuinely additive.
+  here removing the gate is a 2-byte NOP and is additive.
 
 Left out for now: the camera requirement is met without it, and mixing keyboard movement into the
 pad axes changes the glyph-switching feel more than it helps.
