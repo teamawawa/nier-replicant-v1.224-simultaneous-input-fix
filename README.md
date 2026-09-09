@@ -8,7 +8,7 @@ This mod was developed by claude in an impressive time, this includes reversing,
 
 > ✻ Baked for 22m 34s
 
-Details of that are available in [`docs/PROMPT.md`](docs/PROMPT.md).
+Details of that are available in [`docs/PROMPT.md`](docs/PROMPT.md). If you have any reason to be unhappy with the use of LLMs, please simply do not use this mod and move on, sending grievances is highly discouraged.
 
 ## Install
 
