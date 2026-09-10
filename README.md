@@ -12,33 +12,25 @@ Details of that are available in [`docs/PROMPT.md`](docs/PROMPT.md). If you have
 
 ## Install
 
-Requires an ASI loader in the game folder.
-
-I suggest installing [NierReplicantFix](https://codeberg.org/Lyall/NierReplicantFix), which already pre-configures an ASI loader through `winmm.dll`. The two plugins patch different bytes and coexist in any load order.
-
-If you're on Linux, make sure you change the launch command as stated in the README of NierReplicantFix.
-
 ### Pre-built (recommended)
 
-- **Make sure you've done the steps above already about installing and configuring NierReplicantFix.**
-- Download the .asi and .ini file from [the latest release](https://github.com/teamawawa/nier-replicant-v1.224-simultaneous-input-fix/releases/latest)
-- Place the .asi and .ini file on the game folder
-- Done. You can boot up the game and enjoy it, or change settings within `NierConcurrentInput.ini` (see details below).
+See instructions in the [latest release](https://github.com/teamawawa/nier-replicant-v1.224-simultaneous-input-fix/releases/latest).
 
-### Manual build & Install
+You can also use [nexus mods](https://www.nexusmods.com/nierreplicant/mods/123) if you want, though there's no difference between the two options and difficulty.
 
-**Make sure you've done the steps above already about installing and configuring an ASI loader.**
+### Manual build & Install (for advanced users)
+
+- Download [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/tag/v9.7.4), specifically [x64 variant of v9.7.4](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/download/v9.7.4/Ultimate-ASI-Loader_x64.zip).
+- Extract the dll and rename it to `winmm.dll`, put it into your game folder next to the exe. (I'm not linking to winmm zip directly, as that's linking to latest version vs just v9.7.4)
+- If you're on linux, set your launch command for the game in steam to `WINEDLLOVERRIDES="winmm=n,b" %command%`.
+- Run commands below to compile and install the actual mod:
 
 ```sh
 make
-make install            # copies the .asi + default .ini next to the game exe
-```
-
-`GAMEDIR` overrides the destination:
-
-```sh
 make install GAMEDIR="/path/to/NieR Replicant ver.1.22474487139"
 ```
+
+Make sure you replace the path before you run the install command. If you don't want to, you can also manually copy the .asi and .ini files from `build/` to your game folder, next to the exe.
 
 ### Uninstalling
 
