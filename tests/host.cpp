@@ -86,56 +86,57 @@ TEXT unsigned char kCam[] = {
 };
 
 // ---------------------------------------------------------------------------
-// Prompt sites. Every one of these reads the active-device flag rip-relative;
+// Glyph sites. Every one of these reads the active-device flag rip-relative;
 // the four displacement bytes are filled in at startup so they all point at
-// g_deviceFlag, and the plugin is expected to repoint them at a byte holding 1.
+// g_deviceFlag, and the plugin is expected to repoint them at a byte holding
+// the device id for the configured mode (1 controller, 0 keyboard).
 // ---------------------------------------------------------------------------
 volatile unsigned char g_deviceFlag = 0;
 
-#define PROMPT(name, disp, ...) TEXT unsigned char name[] = { __VA_ARGS__ }; \
+#define GLYPH(name, disp, ...) TEXT unsigned char name[] = { __VA_ARGS__ }; \
                                 constexpr size_t name##_disp = disp;
 
-PROMPT(kIconId, 2,          // cmp byte [rip], 0 / movzx eax, bl / je
+GLYPH(kIconId, 2,          // cmp byte [rip], 0 / movzx eax, bl / je
     0x80,0x3D,0,0,0,0,0x00, 0x0F,0xB6,0xC3, 0x0F,0x84,0xAC,0x00,0x00,0x00)
-PROMPT(kInlineIcon, 2,
+GLYPH(kInlineIcon, 2,
     0x80,0x3D,0,0,0,0,0x00, 0x0F,0x85,0x4E,0xFD,0xFF,0xFF,
     0x49,0x8B,0x06, 0x41,0xB8,0x5C,0x01,0x00,0x00)
-PROMPT(kFaceButton, 2,
+GLYPH(kFaceButton, 2,
     0x80,0x3D,0,0,0,0,0x00, 0x74,0x7D, 0x48,0x8D,0x0D,0x57,0x8D,0x3B,0x04)
-PROMPT(kKeyHelpItem, 2,
+GLYPH(kKeyHelpItem, 2,
     0x80,0x3D,0,0,0,0,0x00, 0x8B,0xFA, 0x48,0x8B,0xD9, 0x75,0x10,
     0x80,0x79,0x6A,0x00)
-PROMPT(kKeyHelpMsg, 2,
+GLYPH(kKeyHelpMsg, 2,
     0x80,0x3D,0,0,0,0,0x00, 0xB8,0xCB,0x0A,0x00,0x00, 0xB9,0x96,0x0A,0x00,0x00,
     0x0F,0x45,0xC1)
-PROMPT(kSkip, 3,            // movzx edi, byte [rip]
+GLYPH(kSkip, 3,            // movzx edi, byte [rip]
     0x0F,0xB6,0x3D,0,0,0,0, 0x74,0x36, 0x48,0x8B,0x85,0x58,0x05,0x00,0x00)
-PROMPT(kSkipRebuild, 3,
+GLYPH(kSkipRebuild, 3,
     0x0F,0xB6,0x3D,0,0,0,0, 0x74,0x31, 0x48,0x8B,0x83,0x58,0x05,0x00,0x00)
-PROMPT(kTutorial, 3,
+GLYPH(kTutorial, 3,
     0x0F,0xB6,0x05,0,0,0,0, 0x48,0x8D,0x72,0x04, 0x48,0x8B,0xFA, 0x48,0x8B,0xD9,
     0x3A,0x81,0xC9,0x02,0x00,0x00)
-PROMPT(kTutorialRebuild, 3,
+GLYPH(kTutorialRebuild, 3,
     0x0F,0xB6,0x05,0,0,0,0, 0x48,0x8D,0x8B,0xD8,0x02,0x00,0x00,
     0x88,0x83,0xC9,0x02,0x00,0x00)
-PROMPT(kMemo, 3,
+GLYPH(kMemo, 3,
     0x0F,0xB6,0x1D,0,0,0,0, 0x88,0x5F,0x4D, 0x48,0x8B,0xCD)
-PROMPT(kMemoSibling, 3,
+GLYPH(kMemoSibling, 3,
     0x0F,0xB6,0x05,0,0,0,0, 0x88,0x46,0x4D, 0x44,0x39,0xAE,0x40,0x06,0x00,0x00)
 // This signature legitimately matches two sites in the game; both must land.
-PROMPT(kMemoCacheA, 3,
+GLYPH(kMemoCacheA, 3,
     0x0F,0xB6,0x05,0,0,0,0, 0x3A,0x41,0x4D, 0x74,0x4E, 0x88,0x41,0x4D)
-PROMPT(kMemoCacheB, 3,
+GLYPH(kMemoCacheB, 3,
     0x0F,0xB6,0x05,0,0,0,0, 0x3A,0x41,0x4D, 0x74,0x4E, 0x88,0x41,0x4D)
-PROMPT(kBookCache, 3,
+GLYPH(kBookCache, 3,
     0x0F,0xB6,0x05,0,0,0,0, 0x88,0x85,0x35,0x22,0x00,0x00)
-PROMPT(kBookText, 3,
+GLYPH(kBookText, 3,
     0x0F,0xB6,0x1D,0,0,0,0, 0x49,0x8B,0xCF, 0xE8,0xC0,0xBE,0xF6,0xFF)
-PROMPT(kBookRebuild, 3,
+GLYPH(kBookRebuild, 3,
     0x0F,0xB6,0x35,0,0,0,0, 0x40,0x3A,0xB5,0x35,0x22,0x00,0x00)
 
-struct PromptRef { const char* name; unsigned char* insn; size_t disp; };
-static PromptRef g_prompts[] = {
+struct GlyphRef { const char* name; unsigned char* insn; size_t disp; };
+static GlyphRef g_glyphs[] = {
     { "button icon id",        kIconId,          kIconId_disp },
     { "inline text icon",      kInlineIcon,      kInlineIcon_disp },
     { "face button test",      kFaceButton,      kFaceButton_disp },
@@ -153,7 +154,7 @@ static PromptRef g_prompts[] = {
     { "book text",             kBookText,        kBookText_disp },
     { "book text rebuild",     kBookRebuild,     kBookRebuild_disp },
 };
-constexpr size_t kPromptInsnLen = 7;
+constexpr size_t kGlyphInsnLen = 7;
 
 static int g_failures = 0;
 
@@ -163,11 +164,11 @@ static void unprotect(void* p, size_t n)
     VirtualProtect(p, n, PAGE_EXECUTE_READWRITE, &old);
 }
 
-static unsigned char* ripTarget(const PromptRef& r)
+static unsigned char* ripTarget(const GlyphRef& r)
 {
     int32_t disp = 0;
     memcpy(&disp, r.insn + r.disp, 4);
-    return r.insn + kPromptInsnLen + disp;
+    return r.insn + kGlyphInsnLen + disp;
 }
 
 static void check(bool ok, const char* fmt, ...)
@@ -187,20 +188,26 @@ static bool allBytes(const unsigned char* p, size_t n, unsigned char want)
     return true;
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    // argv[1] is the ForceGlyphs mode the test ini was written with.
+    const char* mode = argc > 1 ? argv[1] : "controller";
+    const bool wantNone = strcmp(mode, "none") == 0;
+    const unsigned char wantDevice = strcmp(mode, "keyboard") == 0 ? 0 : 1;
+
     unprotect(kInput, sizeof kInput);
     unprotect(kAxisMerge, sizeof kAxisMerge);
     unprotect(kCam, sizeof kCam);
-    for (PromptRef& r : g_prompts) {
+    for (GlyphRef& r : g_glyphs) {
         unprotect(r.insn, 32);
         int32_t disp = static_cast<int32_t>(
             reinterpret_cast<intptr_t>(&g_deviceFlag) -
-            reinterpret_cast<intptr_t>(r.insn + kPromptInsnLen));
+            reinterpret_cast<intptr_t>(r.insn + kGlyphInsnLen));
         memcpy(r.insn + r.disp, &disp, 4);
     }
 
-    printf("input block at %p, flag at %p\n", (void*)kInput, (void*)&g_deviceFlag);
+    printf("ForceGlyphs=%s, input block at %p, flag at %p\n",
+           mode, (void*)kInput, (void*)&g_deviceFlag);
 
     HMODULE m = LoadLibraryW(L"NierConcurrentInput.asi");
     if (!m) { printf("FAIL: LoadLibrary failed, err=%lu\n", GetLastError()); return 2; }
@@ -227,11 +234,16 @@ int main()
     for (size_t i = 0; i < 2; ++i)
         check(kAxisMerge[i][13] == 0x58, "axis merge %zu is addps", i);
 
-    // Force Controller Prompts: every site now reads a byte that holds 1, and
-    // no longer the flag this host owns.
-    for (const PromptRef& r : g_prompts) {
+    // Force Glyphs: every site now reads a byte holding the device id for the
+    // configured mode, and no longer the flag this host owns. In "none" mode
+    // nothing may have been touched at all.
+    for (const GlyphRef& r : g_glyphs) {
         const unsigned char* t = ripTarget(r);
-        check(t != &g_deviceFlag && *t == 1, "prompt site '%s' reads 1 (at %p)", r.name, (void*)t);
+        if (wantNone)
+            check(t == &g_deviceFlag, "glyph site '%s' left alone", r.name);
+        else
+            check(t != &g_deviceFlag && *t == wantDevice,
+                  "glyph site '%s' reads %u (at %p)", r.name, wantDevice, (void*)t);
     }
 
     // CameraOnly is off in the test ini, so the predicate must be untouched.

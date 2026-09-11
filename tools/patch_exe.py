@@ -7,8 +7,8 @@ the input file: it always produces a separate output file.
   tools/patch_exe.py game/"NieR Replicant ver.1.22474487139.exe" -o build/patched.exe
   tools/patch_exe.py <exe> --verify        # report what would be patched, write nothing
 
-Defaults match dist/NierConcurrentInput.ini: the mouse gate and the controller
-prompts are patched, keyboard concurrency is not.
+Defaults match dist/NierConcurrentInput.ini: the mouse gate is patched and the
+glyphs are pinned to the controller, keyboard concurrency is not.
 """
 import argparse, re, struct, shutil, sys
 
@@ -30,9 +30,9 @@ AXIS_MERGE_SIG = ("48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 0F 28 F0 "
                   "48 8B CB E8 ?? ?? ?? ?? 84 C0")
 AXIS_MERGE_OPCODE = 13
 
-# --- controller prompts -------------------------------------------------------
+# --- forced glyphs ------------------------------------------------------------
 # (name, signature, rip-disp32 offset, instruction length, may match more than one)
-PROMPT_SITES = [
+GLYPH_SITES = [
     ("button icon id",        "80 3D ?? ?? ?? ?? 00 0F B6 C3 0F 84", 2, 7, False),
     ("inline text icon",      "80 3D ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 49 8B 06 41 B8 5C 01 00 00", 2, 7, False),
     ("face button test",      "80 3D ?? ?? ?? ?? 00 74 7D 48 8D 0D", 2, 7, False),
@@ -192,18 +192,19 @@ def patch_keyboard(img, verify):
             data[m + AXIS_MERGE_OPCODE] = 0x58
 
 
-def patch_prompts(img, verify):
+def patch_glyphs(img, verify, mode):
     data = img.data
     ra, rs, _ = section(img.secs, '.text')
     rra, rrs, _ = section(img.secs, '.rdata')
-    one = data.find(b'\x01', rra, rra + rrs)
-    if one < 0:
-        sys.exit("no constant 1 byte in .rdata")
-    one_va = img.off2va(one)
-    print(f"controller prompts: reading the flag as 1 from va 0x{one_va:x}")
+    device = 1 if mode == 'controller' else 0
+    const = data.find(bytes([device]), rra, rra + rrs)
+    if const < 0:
+        sys.exit(f"no constant {device} byte in .rdata")
+    const_va = img.off2va(const)
+    print(f"force glyphs: {mode} — reading the flag as {device} from va 0x{const_va:x}")
 
     found, flag = [], None
-    for name, sig, dispoff, length, multi in PROMPT_SITES:
+    for name, sig, dispoff, length, multi in GLYPH_SITES:
         hits = find_all(data, ra, rs, sig)
         if not hits:
             print(f"  !! {name}: pattern not found")
@@ -222,13 +223,13 @@ def patch_prompts(img, verify):
                 continue
             found.append((name, h, dispoff, length))
     if not found:
-        sys.exit("controller prompts: nothing to patch")
+        sys.exit("force glyphs: nothing to patch")
     print(f"  device flag is va 0x{flag:x}")
     for name, h, dispoff, length in found:
         print(f"  {name} at va 0x{img.off2va(h):x}")
         if not verify:
-            struct.pack_into('<i', data, h + dispoff, one_va - (img.off2va(h) + length))
-    print(f"controller prompts: {len(found)} read(s) redirected")
+            struct.pack_into('<i', data, h + dispoff, const_va - (img.off2va(h) + length))
+    print(f"force glyphs: {len(found)} read(s) redirected")
 
 
 def main():
@@ -241,8 +242,9 @@ def main():
                     help='skip the MouseUsable gate patch')
     ap.add_argument('--keyboard', action='store_true',
                     help='also make the keyboard work while a controller is active')
-    ap.add_argument('--no-prompts', action='store_true',
-                    help='skip pinning the button prompts to controller glyphs')
+    ap.add_argument('--glyphs', choices=('none', 'controller', 'keyboard'),
+                    default='controller',
+                    help='which device the button glyphs are pinned to (default: controller)')
     args = ap.parse_args()
 
     if not args.verify and not args.output:
@@ -254,8 +256,8 @@ def main():
         patch_mouse(img, args.verify)
     if args.keyboard:
         patch_keyboard(img, args.verify)
-    if not args.no_prompts:
-        patch_prompts(img, args.verify)
+    if args.glyphs != 'none':
+        patch_glyphs(img, args.verify, args.glyphs)
 
     if args.verify:
         return

@@ -230,7 +230,7 @@ What is lost is analog resolution. With a keyboard direction held, the stick is 
 at any deflection, so a gentle push that would have been a walk becomes a full run. That, plus the
 fact that §6 does not need it, is why it is off by default.
 
-## 9. Forcing controller button prompts (`ForceControllerPrompts`)
+## 9. Pinning the button glyphs (`ForceGlyphs`)
 
 `0x14443E48C` is read from 34 places outside the input module, always rip-relative against the
 absolute address (the input module reaches the same byte through the context pointer instead).
@@ -259,9 +259,10 @@ So only the first group is redirected, sixteen reads in all:
 
 Each is `cmp byte [rip+disp32], 0` (`80 3D … 00`) or `movzx r32, byte [rip+disp32]`
 (`0F B6 /r …`). Rather than rewrite the instructions, the patch rewrites the four displacement
-bytes so they point at a byte in `.rdata` that holds `1` — the value the flag has while a pad is
-active. Semantics are unchanged, instruction lengths are unchanged, and the sites that were left
-alone keep reading the real flag.
+bytes so they point at a byte in `.rdata` holding the device id to pin to — `1` for controller,
+`0` for keyboard, exactly the values the flag itself carries. `.rdata` is mapped `PAGE_READONLY`,
+so whatever byte is picked cannot change under the game. Semantics are unchanged, instruction
+lengths are unchanged, and the sites that were left alone keep reading the real flag.
 
 The cached-copy sites matter: several UI classes compare the flag against a cached copy to decide
 when to rebuild a widget. Redirecting the read without redirecting the cache write in the same

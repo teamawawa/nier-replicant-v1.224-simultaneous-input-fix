@@ -1,8 +1,8 @@
 // NierConcurrentInput.asi
 //
 // Lets keyboard/mouse and a controller be used at the same time in
-// NieR Replicant ver.1.22474487139, and can pin the on-screen button prompts
-// to controller glyphs.
+// NieR Replicant ver.1.22474487139, and can pin the on-screen button glyphs
+// to one device.
 //
 // The game keeps a "which device is active" flag (input context +0x8C) that is
 // forced to 1 for as long as any pad button is held or a stick is off-centre.
@@ -158,13 +158,17 @@ bool Nop(uint8_t* addr, size_t len)
 
 // ------------------------------------------------------------------ config --
 
+// Which device the on-screen button glyphs are pinned to. `None` leaves the
+// game's own switching alone.
+enum class Glyphs { None, Controller, Keyboard };
+
 struct Config
 {
-    bool mouseAlwaysActive    = true;
-    bool keyboardAlwaysActive = false;
-    bool cameraOnly           = false;
-    bool forceControllerPrompts = true;
-    bool logging              = true;
+    bool   mouseAlwaysActive    = true;
+    bool   keyboardAlwaysActive = false;
+    bool   cameraOnly           = false;
+    Glyphs forceGlyphs          = Glyphs::Controller;
+    bool   logging              = true;
 };
 
 Config g_config;
@@ -174,6 +178,31 @@ bool IniBool(const wchar_t* section, const wchar_t* key, bool fallback, const st
     wchar_t buf[32] = {};
     GetPrivateProfileStringW(section, key, fallback ? L"true" : L"false", buf, 32, ini.c_str());
     return _wcsicmp(buf, L"true") == 0 || _wcsicmp(buf, L"1") == 0 || _wcsicmp(buf, L"yes") == 0;
+}
+
+// Anything unrecognised falls back to `fallback` rather than silently doing
+// nothing, and says so in the log.
+Glyphs IniGlyphs(const wchar_t* section, const wchar_t* key, Glyphs fallback,
+                 const std::wstring& ini, bool* recognised)
+{
+    wchar_t buf[32] = {};
+    GetPrivateProfileStringW(section, key, L"", buf, 32, ini.c_str());
+    *recognised = true;
+    if (buf[0] == 0)                            return fallback;
+    if (_wcsicmp(buf, L"none")       == 0)      return Glyphs::None;
+    if (_wcsicmp(buf, L"controller") == 0)      return Glyphs::Controller;
+    if (_wcsicmp(buf, L"keyboard")   == 0)      return Glyphs::Keyboard;
+    *recognised = false;
+    return fallback;
+}
+
+const char* GlyphsName(Glyphs g)
+{
+    switch (g) {
+        case Glyphs::Controller: return "controller";
+        case Glyphs::Keyboard:   return "keyboard";
+        default:                 return "none";
+    }
 }
 
 // ----------------------------------------------------- mouse always active --
@@ -228,17 +257,18 @@ constexpr const char* kSigAxisKeyboardMerge =
     "48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 0F 28 F0 48 8B CB E8 ?? ?? ?? ?? 84 C0";
 constexpr size_t kAxisMergeOpcodeOffset = 13;   // the 0x28 of `movaps xmm6, xmm0`
 
-// --------------------------------------------- force controller prompts --
+// ---------------------------------------------------------- force glyphs --
 
 // The UI reads the active-device flag directly (rip-relative, absolute address)
 // wherever it picks between keyboard and controller artwork or wording.  Each
-// of those reads is redirected to a read-only byte that holds 1, which is what
-// the flag looks like while a pad is active.
+// of those reads is redirected to a read-only byte that holds a fixed device
+// id: 1 for controller, 0 for keyboard, which is exactly what the flag itself
+// holds in each mode.
 //
 // Only the sites that choose a glyph or a string are redirected.  The flag is
 // also read by menu cursor handling and by keyboard key-repeat; those keep
 // seeing the real device so mouse and keyboard menu control still work.
-struct PromptSite
+struct GlyphSite
 {
     const char* name;
     const char* sig;
@@ -249,7 +279,7 @@ struct PromptSite
 
 // `cmp byte [rip+disp32], 0`   = 80 3D <disp32> 00
 // `movzx r32, byte [rip+disp32]` = 0F B6 <modrm> <disp32>
-constexpr PromptSite kPromptSites[] = {
+constexpr GlyphSite kGlyphSites[] = {
     // GetButtonIconId(): maps a button id to a glyph in the key-help icon font.
     // This is what almost every on-screen prompt ends up calling.
     { "button icon id",      "80 3D ?? ?? ?? ?? 00 0F B6 C3 0F 84",                              2, 7, false },
@@ -276,14 +306,14 @@ constexpr PromptSite kPromptSites[] = {
     { "book text rebuild",   "0F B6 35 ?? ?? ?? ?? 40 3A B5 35 22 00 00",                        3, 7, false },
 };
 
-uint8_t* RipTarget(const uint8_t* insn, const PromptSite& site)
+uint8_t* RipTarget(const uint8_t* insn, const GlyphSite& site)
 {
     int32_t disp = 0;
     memcpy(&disp, insn + site.dispOffset, 4);
     return const_cast<uint8_t*>(insn) + site.insnLength + disp;
 }
 
-bool RedirectRip(uint8_t* insn, const PromptSite& site, const uint8_t* target)
+bool RedirectRip(uint8_t* insn, const GlyphSite& site, const uint8_t* target)
 {
     intptr_t delta = target - (insn + site.insnLength);
     if (delta < INT32_MIN || delta > INT32_MAX) return false;
@@ -291,14 +321,14 @@ bool RedirectRip(uint8_t* insn, const PromptSite& site, const uint8_t* target)
     return WriteBytes(insn + site.dispOffset, reinterpret_cast<uint8_t*>(&disp), 4);
 }
 
-// A byte in the exe's read-only data that holds 1. `.rdata` is mapped
+// A byte in the exe's read-only data that holds `value`. `.rdata` is mapped
 // PAGE_READONLY, so whatever we pick can never change under us.
-const uint8_t* FindConstantOne(HMODULE exe)
+const uint8_t* FindConstantByte(HMODULE exe, uint8_t value)
 {
     Section rdata = GetSection(exe, ".rdata");
     if (!rdata.base) return nullptr;
     for (size_t i = 0; i < rdata.size; ++i)
-        if (rdata.base[i] == 1) return rdata.base + i;
+        if (rdata.base[i] == value) return rdata.base + i;
     return nullptr;
 }
 
@@ -369,33 +399,36 @@ void PatchInputGates(const Section& text, uint8_t* anchor)
     }
 }
 
-void PatchPrompts(HMODULE exe, const Section& text)
+void PatchGlyphs(HMODULE exe, const Section& text, Glyphs mode)
 {
-    const uint8_t* one = FindConstantOne(exe);
-    if (!one) {
-        Log("[!] Force Controller Prompts: no constant 1 byte in .rdata, skipping");
+    const uint8_t deviceId = (mode == Glyphs::Controller) ? 1 : 0;
+
+    const uint8_t* constant = FindConstantByte(exe, deviceId);
+    if (!constant) {
+        Log("[!] Force Glyphs: no constant %u byte in .rdata, skipping", deviceId);
         return;
     }
-    Log("[i] Force Controller Prompts: reading the device flag as 1 from +0x%llx", Rva(one));
+    Log("[i] Force Glyphs: %s — reading the device flag as %u from +0x%llx",
+        GlyphsName(mode), deviceId, Rva(constant));
 
     // Collect first so a disagreeing site can be dropped before anything is
     // written: every site must reference the same flag byte.
-    struct Found { const PromptSite* site; uint8_t* insn; };
+    struct Found { const GlyphSite* site; uint8_t* insn; };
     std::vector<Found> found;
     uint8_t* flag = nullptr;
 
-    for (const PromptSite& site : kPromptSites) {
+    for (const GlyphSite& site : kGlyphSites) {
         std::vector<uint8_t*> hits = FindAll(text, site.sig, site.multiple ? 0 : 2);
-        if (hits.empty()) { Log("[!] prompt site '%s': pattern not found", site.name); continue; }
+        if (hits.empty()) { Log("[!] glyph site '%s': pattern not found", site.name); continue; }
         if (!site.multiple && hits.size() > 1) {
-            Log("[!] prompt site '%s': pattern is ambiguous, skipping", site.name);
+            Log("[!] glyph site '%s': pattern is ambiguous, skipping", site.name);
             continue;
         }
         for (uint8_t* h : hits) {
             uint8_t* target = RipTarget(h, site);
             if (!flag) flag = target;
             if (target != flag) {
-                Log("[!] prompt site '%s' at +0x%llx: reads +0x%llx, expected +0x%llx, skipping",
+                Log("[!] glyph site '%s' at +0x%llx: reads +0x%llx, expected +0x%llx, skipping",
                     site.name, Rva(h), Rva(target), Rva(flag));
                 continue;
             }
@@ -404,20 +437,20 @@ void PatchPrompts(HMODULE exe, const Section& text)
     }
 
     if (found.empty()) {
-        Log("[!] Force Controller Prompts: nothing to patch");
+        Log("[!] Force Glyphs: nothing to patch");
         return;
     }
-    Log("[i] Force Controller Prompts: device flag is +0x%llx", Rva(flag));
+    Log("[i] Force Glyphs: device flag is +0x%llx", Rva(flag));
 
     int patched = 0;
     for (const Found& f : found) {
-        if (RedirectRip(f.insn, *f.site, one)) {
+        if (RedirectRip(f.insn, *f.site, constant)) {
             ++patched;
         } else {
-            Log("[!] prompt site '%s' at +0x%llx: write failed", f.site->name, Rva(f.insn));
+            Log("[!] glyph site '%s' at +0x%llx: write failed", f.site->name, Rva(f.insn));
         }
     }
-    Log("[+] Force Controller Prompts: %d of %d read(s) redirected",
+    Log("[+] Force Glyphs: %d of %d read(s) redirected",
         patched, static_cast<int>(found.size()));
 }
 
@@ -452,10 +485,10 @@ void ApplyPatches()
         Log("[i] Keyboard Always Active: disabled by config");
     }
 
-    if (g_config.forceControllerPrompts) {
-        PatchPrompts(exe, text);
+    if (g_config.forceGlyphs != Glyphs::None) {
+        PatchGlyphs(exe, text, g_config.forceGlyphs);
     } else {
-        Log("[i] Force Controller Prompts: disabled by config");
+        Log("[i] Force Glyphs: none, the game keeps switching glyphs itself");
     }
 
     if (g_config.cameraOnly) {
@@ -474,10 +507,12 @@ DWORD WINAPI Main(LPVOID module)
     std::wstring dir = ModuleDir(static_cast<HMODULE>(module));
     std::wstring ini = dir + L"\\NierConcurrentInput.ini";
 
+    bool glyphsRecognised = true;
     g_config.mouseAlwaysActive    = IniBool(L"Concurrent Input", L"MouseAlwaysActive",    true,  ini);
     g_config.keyboardAlwaysActive = IniBool(L"Concurrent Input", L"KeyboardAlwaysActive", false, ini);
     g_config.cameraOnly           = IniBool(L"Concurrent Input", L"CameraOnly",           false, ini);
-    g_config.forceControllerPrompts = IniBool(L"Prompts",        L"ForceControllerPrompts", true, ini);
+    g_config.forceGlyphs          = IniGlyphs(L"Glyphs", L"ForceGlyphs", Glyphs::Controller,
+                                              ini, &glyphsRecognised);
     g_config.logging              = IniBool(L"Debug",            L"Logging",              true,  ini);
 
     if (g_config.logging) {
@@ -486,10 +521,13 @@ DWORD WINAPI Main(LPVOID module)
     }
 
     Log("NierConcurrentInput " __DATE__ " " __TIME__);
-    Log("[i] config: MouseAlwaysActive=%d KeyboardAlwaysActive=%d ForceControllerPrompts=%d CameraOnly=%d",
+    Log("[i] config: MouseAlwaysActive=%d KeyboardAlwaysActive=%d CameraOnly=%d ForceGlyphs=%s",
         g_config.mouseAlwaysActive, g_config.keyboardAlwaysActive,
-        g_config.forceControllerPrompts, g_config.cameraOnly);
+        g_config.cameraOnly, GlyphsName(g_config.forceGlyphs));
     Log("[i] ini: %ls", ini.c_str());
+    if (!glyphsRecognised)
+        Log("[!] ForceGlyphs: unrecognised value, expected none/controller/keyboard; using %s",
+            GlyphsName(g_config.forceGlyphs));
 
     ApplyPatches();
 

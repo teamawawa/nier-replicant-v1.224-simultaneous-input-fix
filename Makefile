@@ -75,9 +75,11 @@ clean:
 build/test_host.exe: tests/host.cpp | build
 	$(CXX) -std=c++17 -O0 -Wall -Wextra tests/host.cpp -o $@
 
-# The test ini turns everything on; the shipped defaults leave
-# KeyboardAlwaysActive off.
+# Runs once per ForceGlyphs mode. The input patches are on throughout; the
+# shipped defaults leave KeyboardAlwaysActive off.
 .PHONY: test
 test: $(TARGET) build/test_host.exe
-	printf '[Concurrent Input]\nMouseAlwaysActive = true\nKeyboardAlwaysActive = true\nCameraOnly = false\n\n[Prompts]\nForceControllerPrompts = true\n\n[Debug]\nLogging = true\n' > build/NierConcurrentInput.ini
-	cd build && wine test_host.exe
+	@for mode in controller keyboard none; do \
+	    printf '[Concurrent Input]\nMouseAlwaysActive = true\nKeyboardAlwaysActive = true\nCameraOnly = false\n\n[Glyphs]\nForceGlyphs = %s\n\n[Debug]\nLogging = true\n' "$$mode" > build/NierConcurrentInput.ini; \
+	    (cd build && wine test_host.exe "$$mode") || exit 1; \
+	done

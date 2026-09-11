@@ -4,7 +4,7 @@ Small plugin that stops *NieR Replicant ver.1.22474487139* from disabling the mo
 
 Aim is to make it work well with the Steam Controller touchpads.
 
-It can optionally do the same for the keyboard, and it can pin the on-screen button hints to controller icons so they stop flipping to keyboard ones whenever you touch the mouse.
+It can optionally do the same for the keyboard, and it can pin the on-screen button hints to one device so they stop flipping whenever you touch the other one.
 
 This mod was developed by claude in an impressive time, this includes reversing, documentation and building:
 
@@ -51,7 +51,7 @@ of yours needs the ASI loader. No original game file is modified.
 | `[Concurrent Input]` | `MouseAlwaysActive` | `true` | The fix described above. |
 | `[Concurrent Input]` | `KeyboardAlwaysActive` | `false` | The same for the keyboard: WASD, the action keys and the mouse wheel keep working while a controller is active. Where a stick and a key overlap the two values are *added*. Nothing gets faster — movement is clamped to unit length and the camera curve saturates — but analog resolution suffers: with W held, any stick nudge is already past full tilt. Off by default for that reason. |
 | `[Concurrent Input]` | `CameraOnly` | `false` | Narrower variant of `MouseAlwaysActive`: only the camera ignores the active-device flag, menus and cursor handling are left completely alone. Does *not* restore cursor recentring while a pad is active, so look input stops once the cursor hits a screen edge. For comparison only. |
-| `[Prompts]` | `ForceControllerPrompts` | `true` | Keep the on-screen button hints on controller icons and controller wording instead of flipping to keyboard ones when the mouse moves. Unconditional — with it on you get controller icons even with no controller plugged in. |
+| `[Glyphs]` | `ForceGlyphs` | `controller` | `none`, `controller` or `keyboard`. Pins the on-screen button hints to one device instead of letting them flip whenever you touch the other. Unconditional — `controller` shows controller icons with nothing plugged in, `keyboard` shows keyboard icons even if you never touch a key. |
 | `[Debug]` | `Logging` | `true` | Writes `NierConcurrentInput.log` next to the exe listing what was found and patched. |
 
 On startup the log should read something like:
@@ -60,8 +60,8 @@ On startup the log should read something like:
 [+] MouseUsable device-mode gate: found at +0x3d3f5a
 [+] Mouse Always Active: patched
 [i] Keyboard Always Active: disabled by config
-[i] Force Controller Prompts: device flag is +0x443e48c
-[+] Force Controller Prompts: 16 of 16 read(s) redirected
+[i] Force Glyphs: controller — reading the device flag as 1 from +0xab8844
+[+] Force Glyphs: 16 of 16 read(s) redirected
 ```
 
 If a game update moves the code, the byte signature will stop matching; the plugin then logs
@@ -90,13 +90,14 @@ those eighteen gates so the two are summed instead. Two of them need more than a
 readers *overwrite* the pad value with the keyboard one, which becomes an add by swapping `movaps`
 for `addps`, and the mouse wheel getter spells its test as a `sete`.
 
-**`ForceControllerPrompts`** pins the button hints. The rest of the game reads the same flag from
-34 places, and they are not all cosmetic: some pick glyphs and wording, others drive menu mouse
+**`ForceGlyphs`** pins the button hints to one device. The rest of the game reads the same flag
+from 34 places, and they are not all cosmetic: some pick glyphs and wording, others drive menu mouse
 clicking and keyboard key-repeat. Forcing the flag outright would take the second group with it and
 break mouse control of menus, so the plugin instead rewrites the rip-relative displacement of the
-sixteen reads that choose artwork or text, pointing them at a `.rdata` byte that holds `1`. Nothing
-else changes: instruction lengths and semantics are identical, and the sites left alone still see
-the device you actually used.
+sixteen reads that choose artwork or text, pointing them at a `.rdata` byte that holds the device id
+you asked for — `1` for controller, `0` for keyboard, the same values the flag itself carries.
+Nothing else changes: instruction lengths and semantics are identical, and the sites left alone
+still see the device you actually used.
 
 None of the three modifies the flag itself.
 
@@ -113,8 +114,8 @@ python3 tools/patch_exe.py "game/NieR Replicant ver.1.22474487139.exe" -o build/
 python3 tools/patch_exe.py build/patched.exe --verify
 ```
 
-`--keyboard` adds the keyboard concurrency patch, `--no-mouse` and `--no-prompts` leave the
-respective patch out.
+`--keyboard` adds the keyboard concurrency patch, `--glyphs none|controller|keyboard` picks the
+glyph mode, and `--no-mouse` leaves the mouse gate alone.
 
 ## Build and test
 
