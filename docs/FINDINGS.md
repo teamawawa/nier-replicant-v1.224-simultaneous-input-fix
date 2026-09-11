@@ -41,9 +41,11 @@ and raw Win32 cursor handling (`GetCursorPos`, `SetCursorPos`, `ShowCursor`, `Cl
 | `+0x90` | `0x14443E490` | "force re-apply cursor mode" flag |
 | `+0xA8` | `0x14443E4A8` | embedded `cgl::input::Pad` (per-pad records of `0x214` bytes at `+0x6C`) |
 
-`0x14443E48C` is read from 35+ call sites across the game, and drives button-prompt glyphs
-(KB vs. controller icons), UI behaviour, etc. Anything that changes it changes the glyphs, so the
-fix below leaves it alone.
+`0x14443E48C` is read from 19 places inside the input module (through the context pointer) and
+from 34 more across the rest of the game (rip-relative against the absolute address), where it
+drives button-prompt glyphs, menu cursor handling and prompt wording. Anything that changes the
+byte itself changes all of them at once, so none of the patches here do — see §8 and §9 for how
+the two groups are separated.
 
 Related globals: `0x14443E394` (mouse button state block), `0x14443E3B0` (keyboard state block),
 `0x14443E3C4` (mouse wheel, float).
@@ -185,22 +187,91 @@ want. It is not equivalent to the patch here:
 The two do not overlap in memory (`0x1403D3F5A` vs `0x1403D4084`), so this ASI and
 `NierReplicantFix.asi` can be installed together in any load order.
 
-## 8. Not done: keyboard/pad concurrency
+## 8. Keyboard/pad concurrency (`KeyboardAlwaysActive`)
 
-Analogous switches exist for the axis and button readers, keyed on the same `0x8C`:
+The axis and button readers in the input module all gate their keyboard and mouse-button
+contribution on the same `0x8C`, and they all spell it the same way:
 
-* `0x1403D36F0` `GetAxis` — at `0x1403D377C`, `if (ctx->0x8C == 0)` the pad axis value in `xmm6` is
-  **replaced** by the keyboard value (`0x1403D37E9: movaps xmm6, xmm0`) and then optionally by the
-  mouse axis. Removing the gate alone would zero the stick, so true concurrency needs
-  `movaps xmm6, xmm0` → `addss xmm6, xmm0` (3 bytes → 4, so it needs a code cave).
-* `0x1403D3840` — the same shape for the other axis component.
-* `0x1403D3B00` — already *adds* the keyboard contribution (`fVar3 + fVar2`), gated on `0x8C == 0`;
-  here removing the gate is a 2-byte NOP and is additive.
+```
+cmp byte [<ctx>+0x8C], 0      80 B? 8C 00 00 00 00
+<0 or 1 unrelated instruction>
+jne skip_keyboard_and_mouse   75 xx   |   0F 85 xx xx xx xx
+```
 
-Left out for now: the camera requirement is met without it, and mixing keyboard movement into the
-pad axes changes the glyph-switching feel more than it helps.
+The guarded code ORs (buttons) or `addss`es (axes) its result into what the pad already produced,
+so NOPping the `jne` turns "pad *or* keyboard" into "pad *and* keyboard". Eighteen of those gates
+sit between `0x1403D377C` and `0x1403D45ED`; nothing else within ±0x1000 of `MouseUsable()`
+matches the byte pattern, which is how the plugin finds them without carrying eighteen
+signatures. Note that several are leaf functions with no `.pdata` entry, so a `.pdata`-driven
+sweep misses them — scanning raw bytes does not.
 
-## 9. Tooling in this repo
+Two of them need more than the NOP:
+
+* **The two stick-axis readers** (`0x1403D36F0` and `0x1403D3840`) *replace* the pad value in
+  `xmm6` with the keyboard one at `0x1403D37E9` / `0x1403D3939` instead of adding it, so removing
+  the gate alone would let a keyboard reading of zero cancel the stick. `movaps xmm6, xmm0`
+  (`0F 28 F0`) and `addps xmm6, xmm0` (`0F 58 F0`) are both three bytes, so this is a one-byte
+  opcode swap rather than the code cave an `addss` would need. Only the low lane is ever read
+  back; the upper three carry leftovers from the pad-axis call either way.
+* **The mouse wheel getter** `0x1403D3990` has no branch at all: it writes the test as `sete al`
+  feeding a `test` against the "mouse enabled" byte at `+0x8E`. There the fix is
+  `sete al` → `mov al, 1` + `nop`.
+
+Where a pad axis and a keyboard axis are pushed at once the two add, so `GetAxis()` can return ±2
+instead of ±1. Nothing downstream goes faster for it — both consumers saturate:
+
+* **movement** (`0x1406BCB40`): each component is divided by `0.9`, clamped per-component to
+  `[-1, +1]`, and the resulting vector is renormalised if its length exceeds 1
+  (`0x1406BCFAB`..`0x1406BD03D`);
+* **camera** (`FUN_140648210`, the response curve behind `0x140652580`): anything past the outer
+  threshold returns exactly `±1.0`.
+
+What is lost is analog resolution. With a keyboard direction held, the stick is already saturated
+at any deflection, so a gentle push that would have been a walk becomes a full run. That, plus the
+fact that §6 does not need it, is why it is off by default.
+
+## 9. Forcing controller button prompts (`ForceControllerPrompts`)
+
+`0x14443E48C` is read from 34 places outside the input module, always rip-relative against the
+absolute address (the input module reaches the same byte through the context pointer instead).
+Those 34 split into two groups:
+
+* code that picks **artwork or wording** — which is what the option is for;
+* code that drives **input behaviour**: menu mouse-cursor handling in `FUN_1404C12E0`, keyboard
+  key-repeat in `FUN_1403A5B60` / `FUN_1403A6600` / `FUN_1403A7360`, the menu click path in
+  `FUN_1404CDF00`, and a pad-only feature gate in `FUN_1400760B0` / `FUN_140076120`.
+
+Forcing the flag itself — or blanket-redirecting all 34 reads — would take the second group with
+it and break mouse control of menus, which is exactly what `MouseAlwaysActive` exists to enable.
+So only the first group is redirected, sixteen reads in all:
+
+| Site | Function | What it picks |
+| --- | --- | --- |
+| `0x14008EC42` | `0x14008EC00` | button id → glyph in the key-help icon font. Nearly every prompt funnels through here |
+| `0x14008FDFC` | `0x14008F9A0` | the inline `<button>` tag renderer used inside dialogue and tutorial text |
+| `0x140085699` | `0x140085680` | "is this action on a pad face button", pad artwork vs keyboard character |
+| `0x1400BF274` | `0x1400BF250` | key-help bar item builder; the keyboard path builds a different item |
+| `0x140495566` | `0x140495180` | message id `0xA96` (pad) or `0xACB` (keyboard) |
+| `0x1400CE7AF`, `0x1400CE995` | → `0x140451310` | the cutscene SKIP prompt |
+| `0x14046A2F9`, `0x14046A6BB` | → `0x14046CE20` | tutorial pop-up body text variant |
+| `0x1404D576C`, `0x1404A6A6A`, `0x1404A7083`, `0x1404D6743` | → `0x1404DE3B0` | memo screen text variant and its cached copies of the flag |
+| `0x140509AF7`, `0x140509B81`, `0x140509C21` | → `0x1405336A0` | white-book memo text variant and its cache |
+
+Each is `cmp byte [rip+disp32], 0` (`80 3D … 00`) or `movzx r32, byte [rip+disp32]`
+(`0F B6 /r …`). Rather than rewrite the instructions, the patch rewrites the four displacement
+bytes so they point at a byte in `.rdata` that holds `1` — the value the flag has while a pad is
+active. Semantics are unchanged, instruction lengths are unchanged, and the sites that were left
+alone keep reading the real flag.
+
+The cached-copy sites matter: several UI classes compare the flag against a cached copy to decide
+when to rebuild a widget. Redirecting the read without redirecting the cache write in the same
+class would make the comparison fail every frame and rebuild the widget forever, so within each
+class it is all or nothing.
+
+Before writing anything the patch checks that every site it found resolves to the *same* address;
+a site that disagrees is dropped rather than patched.
+
+## 10. Tooling in this repo
 
 Static analysis was done against a copy of the exe in `game/` (originals untouched):
 

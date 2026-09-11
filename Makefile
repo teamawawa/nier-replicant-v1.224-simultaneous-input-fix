@@ -75,7 +75,9 @@ clean:
 build/test_host.exe: tests/host.cpp | build
 	$(CXX) -std=c++17 -O0 -Wall -Wextra tests/host.cpp -o $@
 
+# The test ini turns everything on; the shipped defaults leave
+# KeyboardAlwaysActive off.
 .PHONY: test
-test: $(TARGET) build/test_host.exe dist/NierConcurrentInput.ini
-	cp dist/NierConcurrentInput.ini build/
+test: $(TARGET) build/test_host.exe
+	printf '[Concurrent Input]\nMouseAlwaysActive = true\nKeyboardAlwaysActive = true\nCameraOnly = false\n\n[Prompts]\nForceControllerPrompts = true\n\n[Debug]\nLogging = true\n' > build/NierConcurrentInput.ini
 	cd build && wine test_host.exe

@@ -4,6 +4,8 @@ Small plugin that stops *NieR Replicant ver.1.22474487139* from disabling the mo
 
 Aim is to make it work well with the Steam Controller touchpads.
 
+It can optionally do the same for the keyboard, and it can pin the on-screen button hints to controller icons so they stop flipping to keyboard ones whenever you touch the mouse.
+
 This mod was developed by claude in an impressive time, this includes reversing, documentation and building:
 
 > ✻ Baked for 22m 34s
@@ -44,17 +46,22 @@ of yours needs the ASI loader. No original game file is modified.
 
 ## Settings — `NierConcurrentInput.ini`
 
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `MouseAlwaysActive` | `true` | The fix described above. |
-| `CameraOnly` | `false` | Narrower variant: only the camera ignores the active-device flag, menus and cursor handling are left completely alone. Does *not* restore cursor recentring while a pad is active, so look input stops once the cursor hits a screen edge. For comparison only. |
-| `Logging` | `true` | Writes `NierConcurrentInput.log` next to the exe listing what was found and patched. |
+| Section | Key | Default | Meaning |
+| --- | --- | --- | --- |
+| `[Concurrent Input]` | `MouseAlwaysActive` | `true` | The fix described above. |
+| `[Concurrent Input]` | `KeyboardAlwaysActive` | `false` | The same for the keyboard: WASD, the action keys and the mouse wheel keep working while a controller is active. Where a stick and a key overlap the two values are *added*. Nothing gets faster — movement is clamped to unit length and the camera curve saturates — but analog resolution suffers: with W held, any stick nudge is already past full tilt. Off by default for that reason. |
+| `[Concurrent Input]` | `CameraOnly` | `false` | Narrower variant of `MouseAlwaysActive`: only the camera ignores the active-device flag, menus and cursor handling are left completely alone. Does *not* restore cursor recentring while a pad is active, so look input stops once the cursor hits a screen edge. For comparison only. |
+| `[Prompts]` | `ForceControllerPrompts` | `true` | Keep the on-screen button hints on controller icons and controller wording instead of flipping to keyboard ones when the mouse moves. Unconditional — with it on you get controller icons even with no controller plugged in. |
+| `[Debug]` | `Logging` | `true` | Writes `NierConcurrentInput.log` next to the exe listing what was found and patched. |
 
-On startup the log should read:
+On startup the log should read something like:
 
 ```
-[+] MouseUsable device-mode gate: found at ...
+[+] MouseUsable device-mode gate: found at +0x3d3f5a
 [+] Mouse Always Active: patched
+[i] Keyboard Always Active: disabled by config
+[i] Force Controller Prompts: device flag is +0x443e48c
+[+] Force Controller Prompts: 16 of 16 read(s) redirected
 ```
 
 If a game update moves the code, the byte signature will stop matching; the plugin then logs
@@ -67,29 +74,47 @@ pad button is held or a stick is off-centre, and everything mouse-related is gat
 camera's mouse branch, and also mouse capture (cursor hiding, clipping and per-frame recentring).
 So the moment you hold the left stick to run, the mouse is dead.
 
-The plugin NOPs the two branches that AND that flag into the game's `MouseUsable()` predicate
-(4 bytes total). After that:
+**`MouseAlwaysActive`** NOPs the two branches that AND that flag into the game's `MouseUsable()`
+predicate (4 bytes total). After that:
 
 * the camera picks mouse-vs-right-stick per frame, using the game's own rule: mouse if the mouse
   moved this frame, right stick otherwise;
 * everything else on the pad — left stick, buttons, triggers — keeps working in the same frame,
   untouched;
-* controller button prompts still switch correctly: the active-device flag itself is not modified,
-  only the mouse gate that read it;
 * mouse capture and cursor recentring stay in their normal "mouse is active" state, so touchpad-driven
   look does not die at the screen edge.
+
+**`KeyboardAlwaysActive`** does the same one level down. Each axis and button reader in the input
+module skips its keyboard and mouse-button contribution while the pad is active; the plugin removes
+those eighteen gates so the two are summed instead. Two of them need more than a NOP — the stick-axis
+readers *overwrite* the pad value with the keyboard one, which becomes an add by swapping `movaps`
+for `addps`, and the mouse wheel getter spells its test as a `sete`.
+
+**`ForceControllerPrompts`** pins the button hints. The rest of the game reads the same flag from
+34 places, and they are not all cosmetic: some pick glyphs and wording, others drive menu mouse
+clicking and keyboard key-repeat. Forcing the flag outright would take the second group with it and
+break mouse control of menus, so the plugin instead rewrites the rip-relative displacement of the
+sixteen reads that choose artwork or text, pointing them at a `.rdata` byte that holds `1`. Nothing
+else changes: instruction lengths and semantics are identical, and the sites left alone still see
+the device you actually used.
+
+None of the three modifies the flag itself.
 
 Full reverse-engineering write-up, including addresses and the byte-level reasoning:
 [`docs/FINDINGS.md`](docs/FINDINGS.md).
 
 ## Installing without an ASI loader
 
-`tools/patch_exe.py` applies the same 4-byte change statically, always to a **copy**:
+`tools/patch_exe.py` applies the same changes statically, always to a **copy**. It defaults to the
+same set as the shipped ini (mouse + prompts):
 
 ```sh
 python3 tools/patch_exe.py "game/NieR Replicant ver.1.22474487139.exe" -o build/patched.exe
 python3 tools/patch_exe.py build/patched.exe --verify
 ```
+
+`--keyboard` adds the keyboard concurrency patch, `--no-mouse` and `--no-prompts` leave the
+respective patch out.
 
 ## Build and test
 
