@@ -304,6 +304,14 @@ constexpr GlyphSite kGlyphSites[] = {
     { "book text cache",     "0F B6 05 ?? ?? ?? ?? 88 85 35 22 00 00",                           3, 7, false },
     { "book text",           "0F B6 1D ?? ?? ?? ?? 49 8B CF E8",                                 3, 7, false },
     { "book text rebuild",   "0F B6 35 ?? ?? ?? ?? 40 3A B5 35 22 00 00",                        3, 7, false },
+    // The system/save menu's key-help bar swaps between two whole presentations
+    // rather than re-picking glyphs, so it needs pinning of its own. The mouse
+    // hit-test in the same function deliberately keeps reading the real flag.
+    { "menu keyhelp show",     "80 3D ?? ?? ?? ?? 00 75 14 48 8B CD E8 ?? ?? ?? ?? 48 8B 88 88 00 00 00", 2, 7, false },
+    { "menu keyhelp switch",   "0F B6 05 ?? ?? ?? ?? 38 87 31 04 00 00 74 5B 48 8B CD 84 C0 75 43",       3, 7, false },
+    { "menu keyhelp cache",    "0F B6 05 ?? ?? ?? ?? 88 87 31 04 00 00 E9",                               3, 7, true  },
+    { "menu keyhelp init cache",  "0F B6 05 ?? ?? ?? ?? 88 87 31 04 00 00 48 8B 05 ?? ?? ?? ?? 83 78 08 02", 3, 7, false },
+    { "menu keyhelp init switch", "44 38 3D ?? ?? ?? ?? 75 3B 48 8B CE E8 ?? ?? ?? ?? 48 8B 88 88 00 00 00", 3, 7, false },
 };
 
 uint8_t* RipTarget(const uint8_t* insn, const GlyphSite& site)

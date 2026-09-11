@@ -237,13 +237,21 @@ absolute address (the input module reaches the same byte through the context poi
 Those 34 split into two groups:
 
 * code that picks **artwork or wording** — which is what the option is for;
-* code that drives **input behaviour**: menu mouse-cursor handling in `FUN_1404C12E0`, keyboard
-  key-repeat in `FUN_1403A5B60` / `FUN_1403A6600` / `FUN_1403A7360`, the menu click path in
-  `FUN_1404CDF00`, and a pad-only feature gate in `FUN_1400760B0` / `FUN_140076120`.
+* code that drives **input behaviour**: the mouse hit-test over menu widgets at `0x1404C16A8`
+  (`FUN_140082780`, which tests the cursor position against the widget list), keyboard key-repeat
+  in `FUN_1403A5B60` / `FUN_1403A6600` / `FUN_1403A7360`, the menu click path in `FUN_1404CDF00`,
+  and the rumble gate in `FUN_1400760B0` / `FUN_140076120` (`FUN_140078390` drives a vibration
+  envelope).
+
+The split does not follow function boundaries. `FUN_1404C12E0` contains both: one read feeds the
+mouse hit-test, and four more switch the system/save menu's key-help bar between its keyboard and
+controller presentations. Classifying per function rather than per read is what left the save menu
+switching after the first pass — those four, plus two more of the same shape in `FUN_1404C1B10`,
+have to be pinned individually.
 
 Forcing the flag itself — or blanket-redirecting all 34 reads — would take the second group with
 it and break mouse control of menus, which is exactly what `MouseAlwaysActive` exists to enable.
-So only the first group is redirected, sixteen reads in all:
+So only the first group is redirected, twenty-two reads in all:
 
 | Site | Function | What it picks |
 | --- | --- | --- |
@@ -256,6 +264,8 @@ So only the first group is redirected, sixteen reads in all:
 | `0x14046A2F9`, `0x14046A6BB` | → `0x14046CE20` | tutorial pop-up body text variant |
 | `0x1404D576C`, `0x1404A6A6A`, `0x1404A7083`, `0x1404D6743` | → `0x1404DE3B0` | memo screen text variant and its cached copies of the flag |
 | `0x140509AF7`, `0x140509B81`, `0x140509C21` | → `0x1405336A0` | white-book memo text variant and its cache |
+| `0x1404C193D`, `0x1404C199E`, `0x1404C19E5`, `0x1404C1A08` | `0x1404C12E0` | system/save menu key-help bar: shows one of two whole presentations rather than re-picking glyphs, plus its cached copy of the flag |
+| `0x1404C2016`, `0x1404C2034` | `0x1404C1B10` | the same switch on the menu's init path |
 
 Each is `cmp byte [rip+disp32], 0` (`80 3D … 00`) or `movzx r32, byte [rip+disp32]`
 (`0F B6 /r …`). Rather than rewrite the instructions, the patch rewrites the four displacement
