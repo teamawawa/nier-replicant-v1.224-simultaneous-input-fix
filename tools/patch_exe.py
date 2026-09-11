@@ -53,6 +53,9 @@ GLYPH_SITES = [
     ("menu keyhelp cache",    "0F B6 05 ?? ?? ?? ?? 88 87 31 04 00 00 E9", 3, 7, True),
     ("menu keyhelp init cache",  "0F B6 05 ?? ?? ?? ?? 88 87 31 04 00 00 48 8B 05 ?? ?? ?? ?? 83 78 08 02", 3, 7, False),
     ("menu keyhelp init switch", "44 38 3D ?? ?? ?? ?? 75 3B 48 8B CE E8 ?? ?? ?? ?? 48 8B 88 88 00 00 00", 3, 7, False),
+    # The menu hint bar is built from a cached copy of the flag; this read fills
+    # it and the copy picks the icon base (100 controller / 0xB7 keyboard).
+    ("menu bar device",       "38 15 ?? ?? ?? ?? 0F 94 C2 89 91 90 02 00 00 3B 91 94 02 00", 2, 6, False),
 ]
 
 
@@ -64,7 +67,6 @@ BEHAVIOUR_SITES = [
     ("rumble b",             "80 3D ?? ?? ?? ?? 00 74 61 48 85 DB 74 5C E8", 2, 7, False),
     ("rumble c",             "80 3D ?? ?? ?? ?? 00 74 37 E8 ?? ?? ?? ?? 48 8B C8 E8", 2, 7, False),
     ("keyhelp act detect",   "38 05 ?? ?? ?? ?? 0F 94 C0 89 43 6C 3B 43 70 74 0D", 2, 6, False),
-    ("keyhelp bar detect",   "38 15 ?? ?? ?? ?? 0F 94 C2 89 91 90 02 00 00 3B 91 94 02 00", 2, 6, False),
     ("key repeat a",         "40 38 35 ?? ?? ?? ?? 75 3D 33 D2 48 8D 0D", 3, 7, False),
     ("key repeat b",         "38 05 ?? ?? ?? ?? 75 58 33 D2 48 8D 0D", 2, 6, False),
     ("key repeat c",         "38 05 ?? ?? ?? ?? 75 12 33 D2 48 8D 0D", 2, 6, False),

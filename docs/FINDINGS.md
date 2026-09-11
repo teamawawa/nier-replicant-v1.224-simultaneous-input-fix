@@ -249,9 +249,30 @@ controller presentations. Classifying per function rather than per read is what 
 switching after the first pass — those four, plus two more of the same shape in `FUN_1404C1B10`,
 have to be pinned individually.
 
+Nor does it follow what a read *looks* like. `0x1400C1209` reads as a plain change detector:
+
+```c
+edx = 0;
+edx = (flag == edx);              // "is keyboard"
+widget->0x290 = edx;
+if (edx != widget->0x294) Rebuild(widget);
+widget->0x294 = widget->0x290;
+```
+
+The rebuild is incidental. What matters is `+0x290`: `FUN_1400C0550` reads that cached copy back and
+uses it to choose the icon base for every entry in the menu hint bar (`100` → controller glyphs,
+`0xB7` → keyboard). Dismissing the read as a detector because the rebuild looked harmless left the
+bar following the real device no matter how many icon-mapping sites were pinned. A read that stores
+the device anywhere has to be traced to whoever loads it back, not judged by its own branch.
+
+That bar was also hard to find from the render side: it is assembled by `FUN_1400C0550` and pushed
+out through `FUN_140457D70`, a *different* sink from the `FUN_140457B40` that the in-world
+`CKeyHelpAct` prompt uses, so working backwards from the key-help text only ever reached the other
+two builders.
+
 Forcing the flag itself — or blanket-redirecting all 34 reads — would take the second group with
 it and break mouse control of menus, which is exactly what `MouseAlwaysActive` exists to enable.
-So only the first group is redirected, twenty-two reads in all:
+So only the first group is redirected, twenty-three reads in all:
 
 | Site | Function | What it picks |
 | --- | --- | --- |
@@ -266,6 +287,7 @@ So only the first group is redirected, twenty-two reads in all:
 | `0x140509AF7`, `0x140509B81`, `0x140509C21` | → `0x1405336A0` | white-book memo text variant and its cache |
 | `0x1404C193D`, `0x1404C199E`, `0x1404C19E5`, `0x1404C1A08` | `0x1404C12E0` | system/save menu key-help bar: shows one of two whole presentations rather than re-picking glyphs, plus its cached copy of the flag |
 | `0x1404C2016`, `0x1404C2034` | `0x1404C1B10` | the same switch on the menu's init path |
+| `0x1400C1209` | `0x1400C11F0` | caches the device into the hint-bar widget at `+0x290`; `FUN_1400C0550` reads that copy and picks the icon base — `100` for controller, `0xB7` for keyboard |
 
 Each is `cmp byte [rip+disp32], 0` (`80 3D … 00`) or `movzx r32, byte [rip+disp32]`
 (`0F B6 /r …`). Rather than rewrite the instructions, the patch rewrites the four displacement

@@ -93,8 +93,12 @@ TEXT unsigned char kCam[] = {
 // ---------------------------------------------------------------------------
 volatile unsigned char g_deviceFlag = 0;
 
-#define GLYPH(name, disp, ...) TEXT unsigned char name[] = { __VA_ARGS__ }; \
-                                constexpr size_t name##_disp = disp;
+#define GLYPH(name, disp, ...)  TEXT unsigned char name[] = { __VA_ARGS__ }; \
+                                 constexpr size_t name##_disp = disp;       \
+                                 constexpr size_t name##_len  = 7;
+#define GLYPH6(name, disp, ...) TEXT unsigned char name[] = { __VA_ARGS__ }; \
+                                 constexpr size_t name##_disp = disp;       \
+                                 constexpr size_t name##_len  = 6;
 
 GLYPH(kIconId, 2,          // cmp byte [rip], 0 / movzx eax, bl / je
     0x80,0x3D,0,0,0,0,0x00, 0x0F,0xB6,0xC3, 0x0F,0x84,0xAC,0x00,0x00,0x00)
@@ -152,33 +156,38 @@ GLYPH(kMenuInitCache, 3,
 GLYPH(kMenuInitSwitch, 3,
     0x44,0x38,0x3D,0,0,0,0, 0x75,0x3B, 0x48,0x8B,0xCE, 0xE8,0x00,0x00,0x00,0x00,
     0x48,0x8B,0x88,0x88,0x00,0x00,0x00)
+// The menu hint bar's cached device, which picks its icon base. Six bytes, not
+// seven: `cmp byte [rip+d], dl` has no immediate.
+GLYPH6(kMenuBarDevice, 2,
+    0x38,0x15,0,0,0,0, 0x0F,0x94,0xC2, 0x89,0x91,0x90,0x02,0x00,0x00,
+    0x3B,0x91,0x94,0x02,0x00)
 
-struct GlyphRef { const char* name; unsigned char* insn; size_t disp; };
+struct GlyphRef { const char* name; unsigned char* insn; size_t disp; size_t len; };
 static GlyphRef g_glyphs[] = {
-    { "button icon id",        kIconId,          kIconId_disp },
-    { "inline text icon",      kInlineIcon,      kInlineIcon_disp },
-    { "face button test",      kFaceButton,      kFaceButton_disp },
-    { "key help item",         kKeyHelpItem,     kKeyHelpItem_disp },
-    { "key help message",      kKeyHelpMsg,      kKeyHelpMsg_disp },
-    { "skip prompt",           kSkip,            kSkip_disp },
-    { "skip prompt rebuild",   kSkipRebuild,     kSkipRebuild_disp },
-    { "tutorial text",         kTutorial,        kTutorial_disp },
-    { "tutorial text rebuild", kTutorialRebuild, kTutorialRebuild_disp },
-    { "memo text",             kMemo,            kMemo_disp },
-    { "memo text sibling",     kMemoSibling,     kMemoSibling_disp },
-    { "memo device cache #1",  kMemoCacheA,      kMemoCacheA_disp },
-    { "memo device cache #2",  kMemoCacheB,      kMemoCacheB_disp },
-    { "book text cache",       kBookCache,       kBookCache_disp },
-    { "book text",             kBookText,        kBookText_disp },
-    { "book text rebuild",     kBookRebuild,     kBookRebuild_disp },
-    { "menu keyhelp show",     kMenuShow,        kMenuShow_disp },
-    { "menu keyhelp switch",   kMenuSwitch,      kMenuSwitch_disp },
-    { "menu keyhelp cache #1", kMenuCacheA,      kMenuCacheA_disp },
-    { "menu keyhelp cache #2", kMenuCacheB,      kMenuCacheB_disp },
-    { "menu keyhelp init cache",  kMenuInitCache,  kMenuInitCache_disp },
-    { "menu keyhelp init switch", kMenuInitSwitch, kMenuInitSwitch_disp },
+    { "button icon id",        kIconId,          kIconId_disp, kIconId_len },
+    { "inline text icon",      kInlineIcon,      kInlineIcon_disp, kInlineIcon_len },
+    { "face button test",      kFaceButton,      kFaceButton_disp, kFaceButton_len },
+    { "key help item",         kKeyHelpItem,     kKeyHelpItem_disp, kKeyHelpItem_len },
+    { "key help message",      kKeyHelpMsg,      kKeyHelpMsg_disp, kKeyHelpMsg_len },
+    { "skip prompt",           kSkip,            kSkip_disp, kSkip_len },
+    { "skip prompt rebuild",   kSkipRebuild,     kSkipRebuild_disp, kSkipRebuild_len },
+    { "tutorial text",         kTutorial,        kTutorial_disp, kTutorial_len },
+    { "tutorial text rebuild", kTutorialRebuild, kTutorialRebuild_disp, kTutorialRebuild_len },
+    { "memo text",             kMemo,            kMemo_disp, kMemo_len },
+    { "memo text sibling",     kMemoSibling,     kMemoSibling_disp, kMemoSibling_len },
+    { "memo device cache #1",  kMemoCacheA,      kMemoCacheA_disp, kMemoCacheA_len },
+    { "memo device cache #2",  kMemoCacheB,      kMemoCacheB_disp, kMemoCacheB_len },
+    { "book text cache",       kBookCache,       kBookCache_disp, kBookCache_len },
+    { "book text",             kBookText,        kBookText_disp, kBookText_len },
+    { "book text rebuild",     kBookRebuild,     kBookRebuild_disp, kBookRebuild_len },
+    { "menu keyhelp show",     kMenuShow,        kMenuShow_disp, kMenuShow_len },
+    { "menu keyhelp switch",   kMenuSwitch,      kMenuSwitch_disp, kMenuSwitch_len },
+    { "menu keyhelp cache #1", kMenuCacheA,      kMenuCacheA_disp, kMenuCacheA_len },
+    { "menu keyhelp cache #2", kMenuCacheB,      kMenuCacheB_disp, kMenuCacheB_len },
+    { "menu keyhelp init cache",  kMenuInitCache,  kMenuInitCache_disp, kMenuInitCache_len },
+    { "menu keyhelp init switch", kMenuInitSwitch, kMenuInitSwitch_disp, kMenuInitSwitch_len },
+    { "menu bar device",       kMenuBarDevice,   kMenuBarDevice_disp, kMenuBarDevice_len },
 };
-constexpr size_t kGlyphInsnLen = 7;
 
 static int g_failures = 0;
 
@@ -192,7 +201,7 @@ static unsigned char* ripTarget(const GlyphRef& r)
 {
     int32_t disp = 0;
     memcpy(&disp, r.insn + r.disp, 4);
-    return r.insn + kGlyphInsnLen + disp;
+    return r.insn + r.len + disp;
 }
 
 static void check(bool ok, const char* fmt, ...)
@@ -226,7 +235,7 @@ int main(int argc, char** argv)
         unprotect(r.insn, 32);
         int32_t disp = static_cast<int32_t>(
             reinterpret_cast<intptr_t>(&g_deviceFlag) -
-            reinterpret_cast<intptr_t>(r.insn + kGlyphInsnLen));
+            reinterpret_cast<intptr_t>(r.insn + r.len));
         memcpy(r.insn + r.disp, &disp, 4);
     }
 

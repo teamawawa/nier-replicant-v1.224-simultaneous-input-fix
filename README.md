@@ -62,7 +62,7 @@ On startup the log should read something like:
 [+] Mouse Always Active: patched
 [i] Keyboard Always Active: disabled by config
 [i] Force Glyphs: controller — reading the device flag as 1 from +0xab8844
-[+] Force Glyphs: 22 of 22 read(s) redirected
+[+] Force Glyphs: 23 of 23 read(s) redirected
 ```
 
 If a game update moves the code, the byte signature will stop matching; the plugin then logs
@@ -95,7 +95,7 @@ for `addps`, and the mouse wheel getter spells its test as a `sete`.
 from 34 places, and they are not all cosmetic: some pick glyphs and wording, others drive menu mouse
 clicking and keyboard key-repeat. Forcing the flag outright would take the second group with it and
 break mouse control of menus, so the plugin instead rewrites the rip-relative displacement of the
-twenty-two reads that choose artwork or text, pointing them at a `.rdata` byte that holds the device id
+twenty-three reads that choose artwork or text, pointing them at a `.rdata` byte that holds the device id
 you asked for — `1` for controller, `0` for keyboard, the same values the flag itself carries.
 Nothing else changes: instruction lengths and semantics are identical, and the sites left alone
 still see the device you actually used.

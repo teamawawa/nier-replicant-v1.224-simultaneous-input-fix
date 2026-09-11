@@ -313,6 +313,11 @@ constexpr GlyphSite kGlyphSites[] = {
     { "menu keyhelp cache",    "0F B6 05 ?? ?? ?? ?? 88 87 31 04 00 00 E9",                               3, 7, true  },
     { "menu keyhelp init cache",  "0F B6 05 ?? ?? ?? ?? 88 87 31 04 00 00 48 8B 05 ?? ?? ?? ?? 83 78 08 02", 3, 7, false },
     { "menu keyhelp init switch", "44 38 3D ?? ?? ?? ?? 75 3B 48 8B CE E8 ?? ?? ?? ?? 48 8B 88 88 00 00 00", 3, 7, false },
+    // The menu hint bar (FUN_1400C0550) is built from a cached copy of the flag
+    // rather than re-picking glyphs: this read fills that copy, and the copy
+    // chooses the icon base — 100 for controller, 0xB7 for keyboard. It reads
+    // like a change detector, which is why it was missed twice.
+    { "menu bar device",     "38 15 ?? ?? ?? ?? 0F 94 C2 89 91 90 02 00 00 3B 91 94 02 00",      2, 6, false },
 };
 
 // Diagnostic only: the reads that were deliberately left reading the real
@@ -325,7 +330,6 @@ constexpr GlyphSite kBehaviourSites[] = {
     { "rumble b",             "80 3D ?? ?? ?? ?? 00 74 61 48 85 DB 74 5C E8",                    2, 7, false },
     { "rumble c",             "80 3D ?? ?? ?? ?? 00 74 37 E8 ?? ?? ?? ?? 48 8B C8 E8",           2, 7, false },
     { "keyhelp act detect",   "38 05 ?? ?? ?? ?? 0F 94 C0 89 43 6C 3B 43 70 74 0D",              2, 6, false },
-    { "keyhelp bar detect",   "38 15 ?? ?? ?? ?? 0F 94 C2 89 91 90 02 00 00 3B 91 94 02 00",     2, 6, false },
     { "key repeat a",         "40 38 35 ?? ?? ?? ?? 75 3D 33 D2 48 8D 0D",                       3, 7, false },
     { "key repeat b",         "38 05 ?? ?? ?? ?? 75 58 33 D2 48 8D 0D",                          2, 6, false },
     { "key repeat c",         "38 05 ?? ?? ?? ?? 75 12 33 D2 48 8D 0D",                          2, 6, false },
