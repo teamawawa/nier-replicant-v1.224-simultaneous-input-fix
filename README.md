@@ -53,6 +53,7 @@ of yours needs the ASI loader. No original game file is modified.
 | `[Concurrent Input]` | `CameraOnly` | `false` | Narrower variant of `MouseAlwaysActive`: only the camera ignores the active-device flag, menus and cursor handling are left completely alone. Does *not* restore cursor recentring while a pad is active, so look input stops once the cursor hits a screen edge. For comparison only. |
 | `[Glyphs]` | `ForceGlyphs` | `controller` | `none`, `controller` or `keyboard`. Pins the on-screen button hints to one device instead of letting them flip whenever you touch the other. Unconditional — `controller` shows controller icons with nothing plugged in, `keyboard` shows keyboard icons even if you never touch a key. |
 | `[Debug]` | `Logging` | `true` | Writes `NierConcurrentInput.log` next to the exe listing what was found and patched. |
+| `[Debug]` | `PinAllDeviceReads` | `false` | Diagnostic. Also pins the device-flag reads that drive behaviour rather than artwork, to test whether a screen reads that flag at all. Breaks mouse menu control and keyboard key-repeat while on; not for playing. |
 
 On startup the log should read something like:
 

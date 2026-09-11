@@ -168,6 +168,7 @@ struct Config
     bool   keyboardAlwaysActive = false;
     bool   cameraOnly           = false;
     Glyphs forceGlyphs          = Glyphs::Controller;
+    bool   pinAllDeviceReads    = false;
     bool   logging              = true;
 };
 
@@ -314,6 +315,28 @@ constexpr GlyphSite kGlyphSites[] = {
     { "menu keyhelp init switch", "44 38 3D ?? ?? ?? ?? 75 3B 48 8B CE E8 ?? ?? ?? ?? 48 8B 88 88 00 00 00", 3, 7, false },
 };
 
+// Diagnostic only: the reads that were deliberately left reading the real
+// device because they drive behaviour rather than artwork. Pinning these makes
+// mouse menu control and keyboard key-repeat follow the forced device too, so
+// it is not something to ship enabled — it exists to answer "does this screen
+// read this flag at all?" in one run.
+constexpr GlyphSite kBehaviourSites[] = {
+    { "rumble a",             "80 3D ?? ?? ?? ?? 00 74 2C 48 85 D2 74 27 E8",                    2, 7, false },
+    { "rumble b",             "80 3D ?? ?? ?? ?? 00 74 61 48 85 DB 74 5C E8",                    2, 7, false },
+    { "rumble c",             "80 3D ?? ?? ?? ?? 00 74 37 E8 ?? ?? ?? ?? 48 8B C8 E8",           2, 7, false },
+    { "keyhelp act detect",   "38 05 ?? ?? ?? ?? 0F 94 C0 89 43 6C 3B 43 70 74 0D",              2, 6, false },
+    { "keyhelp bar detect",   "38 15 ?? ?? ?? ?? 0F 94 C2 89 91 90 02 00 00 3B 91 94 02 00",     2, 6, false },
+    { "key repeat a",         "40 38 35 ?? ?? ?? ?? 75 3D 33 D2 48 8D 0D",                       3, 7, false },
+    { "key repeat b",         "38 05 ?? ?? ?? ?? 75 58 33 D2 48 8D 0D",                          2, 6, false },
+    { "key repeat c",         "38 05 ?? ?? ?? ?? 75 12 33 D2 48 8D 0D",                          2, 6, false },
+    { "kbm accessor",         "80 3D ?? ?? ?? ?? 00 0F 94 C0 C3 CC CC CC CC CC 48 89 5C 24 08 48 89 6C 24 10", 2, 7, false },
+    { "mouse hit test",       "80 3D ?? ?? ?? ?? 00 0F 85 A3 00 00 00 48 8B D6 48 8D 8F B8",     2, 7, false },
+    { "menu click",           "80 3D ?? ?? ?? ?? 00 75 4F 65 48 8B 04 25 58 00 00 00",           2, 7, false },
+    // Three call sites share these bytes; only the one reading the device flag
+    // survives the target check below.
+    { "device changed event", "38 1D ?? ?? ?? ?? 48 8B CF 0F 95 C3 33 D2 E8",                    2, 6, true  },
+};
+
 uint8_t* RipTarget(const uint8_t* insn, const GlyphSite& site)
 {
     int32_t disp = 0;
@@ -407,7 +430,37 @@ void PatchInputGates(const Section& text, uint8_t* anchor)
     }
 }
 
-void PatchGlyphs(HMODULE exe, const Section& text, Glyphs mode)
+// Collects the matches for one table into `found`, verifying that every site
+// reads the same byte. Only unambiguous signatures are allowed to establish
+// what that byte is, so a shared signature can never redirect the reference.
+template <size_t N>
+void CollectSites(const Section& text, const GlyphSite (&sites)[N],
+                  std::vector<std::pair<const GlyphSite*, uint8_t*>>& found,
+                  uint8_t*& flag)
+{
+    for (const GlyphSite& site : sites) {
+        std::vector<uint8_t*> hits = FindAll(text, site.sig, site.multiple ? 0 : 2);
+        if (hits.empty()) { Log("[!] glyph site '%s': pattern not found", site.name); continue; }
+        if (!site.multiple && hits.size() > 1) {
+            Log("[!] glyph site '%s': pattern is ambiguous, skipping", site.name);
+            continue;
+        }
+        for (uint8_t* h : hits) {
+            uint8_t* target = RipTarget(h, site);
+            if (!flag && !site.multiple) flag = target;
+            if (!flag) continue;   // nothing to check against yet
+            if (target != flag) {
+                if (!site.multiple)
+                    Log("[!] glyph site '%s' at +0x%llx: reads +0x%llx, expected +0x%llx, skipping",
+                        site.name, Rva(h), Rva(target), Rva(flag));
+                continue;
+            }
+            found.push_back({ &site, h });
+        }
+    }
+}
+
+void PatchGlyphs(HMODULE exe, const Section& text, Glyphs mode, bool pinAll)
 {
     const uint8_t deviceId = (mode == Glyphs::Controller) ? 1 : 0;
 
@@ -421,27 +474,13 @@ void PatchGlyphs(HMODULE exe, const Section& text, Glyphs mode)
 
     // Collect first so a disagreeing site can be dropped before anything is
     // written: every site must reference the same flag byte.
-    struct Found { const GlyphSite* site; uint8_t* insn; };
-    std::vector<Found> found;
+    std::vector<std::pair<const GlyphSite*, uint8_t*>> found;
     uint8_t* flag = nullptr;
 
-    for (const GlyphSite& site : kGlyphSites) {
-        std::vector<uint8_t*> hits = FindAll(text, site.sig, site.multiple ? 0 : 2);
-        if (hits.empty()) { Log("[!] glyph site '%s': pattern not found", site.name); continue; }
-        if (!site.multiple && hits.size() > 1) {
-            Log("[!] glyph site '%s': pattern is ambiguous, skipping", site.name);
-            continue;
-        }
-        for (uint8_t* h : hits) {
-            uint8_t* target = RipTarget(h, site);
-            if (!flag) flag = target;
-            if (target != flag) {
-                Log("[!] glyph site '%s' at +0x%llx: reads +0x%llx, expected +0x%llx, skipping",
-                    site.name, Rva(h), Rva(target), Rva(flag));
-                continue;
-            }
-            found.push_back({ &site, h });
-        }
+    CollectSites(text, kGlyphSites, found, flag);
+    if (pinAll) {
+        Log("[i] PinAllDeviceReads: also pinning the behaviour reads (diagnostic)");
+        CollectSites(text, kBehaviourSites, found, flag);
     }
 
     if (found.empty()) {
@@ -451,11 +490,11 @@ void PatchGlyphs(HMODULE exe, const Section& text, Glyphs mode)
     Log("[i] Force Glyphs: device flag is +0x%llx", Rva(flag));
 
     int patched = 0;
-    for (const Found& f : found) {
-        if (RedirectRip(f.insn, *f.site, constant)) {
+    for (const auto& f : found) {
+        if (RedirectRip(f.second, *f.first, constant)) {
             ++patched;
         } else {
-            Log("[!] glyph site '%s' at +0x%llx: write failed", f.site->name, Rva(f.insn));
+            Log("[!] glyph site '%s' at +0x%llx: write failed", f.first->name, Rva(f.second));
         }
     }
     Log("[+] Force Glyphs: %d of %d read(s) redirected",
@@ -494,7 +533,7 @@ void ApplyPatches()
     }
 
     if (g_config.forceGlyphs != Glyphs::None) {
-        PatchGlyphs(exe, text, g_config.forceGlyphs);
+        PatchGlyphs(exe, text, g_config.forceGlyphs, g_config.pinAllDeviceReads);
     } else {
         Log("[i] Force Glyphs: none, the game keeps switching glyphs itself");
     }
@@ -521,6 +560,7 @@ DWORD WINAPI Main(LPVOID module)
     g_config.cameraOnly           = IniBool(L"Concurrent Input", L"CameraOnly",           false, ini);
     g_config.forceGlyphs          = IniGlyphs(L"Glyphs", L"ForceGlyphs", Glyphs::Controller,
                                               ini, &glyphsRecognised);
+    g_config.pinAllDeviceReads    = IniBool(L"Debug", L"PinAllDeviceReads", false, ini);
     g_config.logging              = IniBool(L"Debug",            L"Logging",              true,  ini);
 
     if (g_config.logging) {

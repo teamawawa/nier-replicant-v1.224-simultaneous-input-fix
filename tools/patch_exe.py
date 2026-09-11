@@ -56,6 +56,26 @@ GLYPH_SITES = [
 ]
 
 
+# Diagnostic only (--pin-all): the reads left on the real device because they
+# drive behaviour, not artwork. Pinning them makes mouse menu control and
+# keyboard key-repeat follow the forced device too.
+BEHAVIOUR_SITES = [
+    ("rumble a",             "80 3D ?? ?? ?? ?? 00 74 2C 48 85 D2 74 27 E8", 2, 7, False),
+    ("rumble b",             "80 3D ?? ?? ?? ?? 00 74 61 48 85 DB 74 5C E8", 2, 7, False),
+    ("rumble c",             "80 3D ?? ?? ?? ?? 00 74 37 E8 ?? ?? ?? ?? 48 8B C8 E8", 2, 7, False),
+    ("keyhelp act detect",   "38 05 ?? ?? ?? ?? 0F 94 C0 89 43 6C 3B 43 70 74 0D", 2, 6, False),
+    ("keyhelp bar detect",   "38 15 ?? ?? ?? ?? 0F 94 C2 89 91 90 02 00 00 3B 91 94 02 00", 2, 6, False),
+    ("key repeat a",         "40 38 35 ?? ?? ?? ?? 75 3D 33 D2 48 8D 0D", 3, 7, False),
+    ("key repeat b",         "38 05 ?? ?? ?? ?? 75 58 33 D2 48 8D 0D", 2, 6, False),
+    ("key repeat c",         "38 05 ?? ?? ?? ?? 75 12 33 D2 48 8D 0D", 2, 6, False),
+    ("kbm accessor",         "80 3D ?? ?? ?? ?? 00 0F 94 C0 C3 CC CC CC CC CC 48 89 5C 24 08 48 89 6C 24 10", 2, 7, False),
+    ("mouse hit test",       "80 3D ?? ?? ?? ?? 00 0F 85 A3 00 00 00 48 8B D6 48 8D 8F B8", 2, 7, False),
+    ("menu click",           "80 3D ?? ?? ?? ?? 00 75 4F 65 48 8B 04 25 58 00 00 00", 2, 7, False),
+    # Three call sites share these bytes; only the flag reader survives the check.
+    ("device changed event", "38 1D ?? ?? ?? ?? 48 8B CF 0F 95 C3 33 D2 E8", 2, 6, True),
+]
+
+
 def sections(d):
     pe = struct.unpack_from('<I', d, 0x3c)[0]
     if d[pe:pe+4] != b'PE\0\0':
@@ -197,7 +217,7 @@ def patch_keyboard(img, verify):
             data[m + AXIS_MERGE_OPCODE] = 0x58
 
 
-def patch_glyphs(img, verify, mode):
+def patch_glyphs(img, verify, mode, pin_all=False):
     data = img.data
     ra, rs, _ = section(img.secs, '.text')
     rra, rrs, _ = section(img.secs, '.rdata')
@@ -209,7 +229,11 @@ def patch_glyphs(img, verify, mode):
     print(f"force glyphs: {mode} — reading the flag as {device} from va 0x{const_va:x}")
 
     found, flag = [], None
-    for name, sig, dispoff, length, multi in GLYPH_SITES:
+    tables = list(GLYPH_SITES)
+    if pin_all:
+        print("  pin-all: also pinning the behaviour reads (diagnostic)")
+        tables += BEHAVIOUR_SITES
+    for name, sig, dispoff, length, multi in tables:
         hits = find_all(data, ra, rs, sig)
         if not hits:
             print(f"  !! {name}: pattern not found")
@@ -220,11 +244,14 @@ def patch_glyphs(img, verify, mode):
         for h in hits:
             disp = struct.unpack_from('<i', data, h + dispoff)[0]
             target = img.off2va(h) + length + disp
-            if flag is None:
+            if flag is None and not multi:
                 flag = target
+            if flag is None:
+                continue
             if target != flag:
-                print(f"  !! {name} at va 0x{img.off2va(h):x}: reads 0x{target:x}, "
-                      f"expected 0x{flag:x}, skipped")
+                if not multi:
+                    print(f"  !! {name} at va 0x{img.off2va(h):x}: reads 0x{target:x}, "
+                          f"expected 0x{flag:x}, skipped")
                 continue
             found.append((name, h, dispoff, length))
     if not found:
@@ -250,6 +277,8 @@ def main():
     ap.add_argument('--glyphs', choices=('none', 'controller', 'keyboard'),
                     default='controller',
                     help='which device the button glyphs are pinned to (default: controller)')
+    ap.add_argument('--pin-all', action='store_true',
+                    help='diagnostic: also pin the reads that drive behaviour, not artwork')
     args = ap.parse_args()
 
     if not args.verify and not args.output:
@@ -262,7 +291,7 @@ def main():
     if args.keyboard:
         patch_keyboard(img, args.verify)
     if args.glyphs != 'none':
-        patch_glyphs(img, args.verify, args.glyphs)
+        patch_glyphs(img, args.verify, args.glyphs, args.pin_all)
 
     if args.verify:
         return
