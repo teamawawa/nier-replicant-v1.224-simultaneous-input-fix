@@ -20,22 +20,27 @@ You can also use [nexus mods](https://www.nexusmods.com/nierreplicant/mods/123) 
 
 ### Manual build & Install (for advanced users)
 
-- Download [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/tag/v9.7.4), specifically [x64 variant of v9.7.4](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/download/v9.7.4/Ultimate-ASI-Loader_x64.zip).
-- Extract the dll and rename it to `winmm.dll`, put it into your game folder next to the exe. (I'm not linking to winmm zip directly, as that's linking to latest version vs just v9.7.4)
-- If you're on linux, set your launch command for the game in steam to `WINEDLLOVERRIDES="winmm=n,b" %command%`.
-- Run commands below to compile and install the actual mod:
+This is meant to be compiled in a linux environment, yes, it's ironic to build windows binaries in linux so that you can run them in wine later :)
+
+You'll need the dependencies `mingw-w64-gcc` (on arch. `g++-mingw-w64-x86-64` on debian/ubuntu, `mingw64-gcc-c++` on fedora), `make`, `curl` and `unzip`.
 
 ```sh
 make
+make loader  # downloads ultimate asi loader
 make install GAMEDIR="/path/to/NieR Replicant ver.1.22474487139"
 ```
 
-Make sure you replace the path before you run the install command. If you don't want to, you can also manually copy the .asi and .ini files from `build/` to your game folder, next to the exe.
+Make sure you replace the path before you run the install command.
+
+If you'd rather copy manually, copy `build/NierConcurrentInput.asi`, `dist/NierConcurrentInput.ini` and `build/loader/winmm.dll` there yourself, all 3 files should sit flat next to the game .exe.
+
+If you're playing on linux, set your launch command for the game in steam to `WINEDLLOVERRIDES="winmm=n,b" %command%`.
 
 ### Uninstalling
 
 To uninstall, delete `NierConcurrentInput.asi`, `NierConcurrentInput.ini` and
-`NierConcurrentInput.log` from the game folder. No original game file is modified.
+`NierConcurrentInput.log` from the game folder. Delete `winmm.dll` too, unless another mod
+of yours needs the ASI loader. No original game file is modified.
 
 ## Settings — `NierConcurrentInput.ini`
 
